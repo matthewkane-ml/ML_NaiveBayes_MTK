@@ -1,110 +1,73 @@
-# Data Science Project Boilerplate
+# Naive Bayes — App Review Sentiment Analysis
 
-This boilerplate is designed to kickstart data science projects by providing a basic setup for database connections, data processing, and machine learning model development. It includes a structured folder organization for your datasets and a set of pre-defined Python packages necessary for most data science tasks.
+> NLP classification pipeline that predicts whether a Google Play Store review is positive or negative: text preprocessing with CountVectorizer, MultinomialNB selected over Gaussian and Bernoulli variants on theoretical grounds, then optimised with RandomizedSearchCV — with a Random Forest comparison showing the tradeoff between interpretability and ensemble power.
 
-## Structure
+---
 
-The project is organized as follows:
+## Problem
 
-- **`src/app.py`** → Main Python script where your project will run.
-- **`src/explore.ipynb`** → Notebook for exploration and testing. Once exploration is complete, migrate the clean code to `app.py`.
-- **`src/utils.py`** → Auxiliary functions, such as database connection.
-- **`requirements.txt`** → List of required Python packages.
-- **`models/`** → Will contain your SQLAlchemy model classes.
-- **`data/`** → Stores datasets at different stages:
-  - **`data/raw/`** → Raw data.
-  - **`data/interim/`** → Temporarily transformed data.
-  - **`data/processed/`** → Data ready for analysis.
+Classify Google Play Store user reviews as positive or negative sentiment. Automating this lets app developers monitor user satisfaction at scale without manually reading thousands of reviews. This is a binary NLP classification problem.
 
+## Dataset
 
-## ⚡ Initial Setup in Codespaces (Recommended)
+- **Source:** Google Play Store Reviews dataset (GitHub / 4Geeks)
+- **Target:** `polarity` — 1 = positive sentiment, 0 = negative sentiment
+- **Raw features:** `package_name` (dropped), `review` (text — the only predictor)
 
-No manual setup is required, as **Codespaces is automatically configured** with the predefined files created by the academy for you. Just follow these steps:
+## Pipeline
 
-1. **Wait for the environment to configure automatically**.
-   - All necessary packages and the database will install themselves.
-   - The automatically created `username` and `db_name` are in the **`.env`** file at the root of the project.
-2. **Once Codespaces is ready, you can start working immediately**.
+| Step | Tool / Approach |
+|---|---|
+| Text cleaning | Strip whitespace, convert to lowercase |
+| Vectorization | `CountVectorizer(stop_words="english")` → bag-of-words word count matrix |
+| Train/test split | 80/20, random_state=42 |
+| Model selection | MultinomialNB chosen — counts-based features match its probabilistic assumptions |
+| Optimisation | `RandomizedSearchCV` (50 iterations, 5-fold CV) over `alpha` and `fit_prior` |
+| Best hyperparams | `alpha=1.918`, `fit_prior=False` |
 
+**Why MultinomialNB over Gaussian or Bernoulli?**
+- **MultinomialNB** is designed for count data (word frequencies) — a natural fit for Bag-of-Words
+- **GaussianNB** assumes continuous normally-distributed features — incorrect for integer word counts
+- **BernoulliNB** treats each word as binary (present/absent) — loses frequency information
+- All three were trained and compared; MultinomialNB confirmed best empirically and theoretically
 
-## 💻 Local Setup (Only if you can't use Codespaces)
+## Model Comparison
 
-**Prerequisites**
+| Model | Notes |
+|---|---|
+| MultinomialNB (baseline) | Default alpha=1.0 |
+| MultinomialNB (tuned) | alpha=1.918, fit_prior=False — improved accuracy |
+| RandomForestClassifier (n_estimators=60) | ~80% accuracy — strong ensemble baseline |
 
-Make sure you have Python 3.11+ installed on your machine. You will also need pip to install the Python packages.
+The Random Forest achieves higher raw accuracy but at the cost of interpretability. Naive Bayes is faster to train, requires far less memory on high-dimensional text data, and its word-level probabilities are directly inspectable.
 
-**Installation**
+## Key Takeaways
 
-Clone the project repository to your local machine.
+- **Bag-of-Words is a powerful baseline:** Ignoring word order and treating reviews as unordered word counts still captures enough signal to classify sentiment reliably — a strong reminder that simpler representations often work well before reaching for embeddings.
+- **Algorithm choice should follow the data type:** The theoretical reason for choosing MultinomialNB (count data) over GaussianNB (continuous data) is as important as the empirical accuracy comparison.
+- **`fit_prior=False` flattens the class prior:** When classes are imbalanced, letting the model learn the prior from training data can bias it toward the majority class — setting `fit_prior=False` assumes equal priors and improves minority-class recall.
 
-Navigate to the project directory and install the required Python packages:
+## Tech Stack
+
+`Python` · `scikit-learn` · `pandas` · `NLTK (stop words)`
+
+## Run It Locally
 
 ```bash
+git clone https://github.com/matthewkane-ml/ML_NaiveBayes_MTK.git
+cd ML_NaiveBayes_MTK
 pip install -r requirements.txt
+jupyter notebook src/app.ipynb
 ```
 
-**Create a database (if necessary)**
+The trained model is saved to `models/` via `pickle`.
 
-Create a new database within the Postgres engine by customizing and executing the following command:
+## What I'd Do Next
 
-```bash
-$ psql -U postgres -c "DO \$\$ BEGIN 
-    CREATE USER my_user WITH PASSWORD 'my_password'; 
-    CREATE DATABASE my_database OWNER my_user; 
-END \$\$;"
-```
-Connect to the Postgres engine to use your database, manipulate tables, and data:
+- Replace CountVectorizer with **TF-IDF** to down-weight common words that appear across all reviews and up-weight distinctive terms
+- Add a **confusion matrix heatmap** and per-class precision/recall — overall accuracy on imbalanced sentiment data is a misleading single number
+- Try **word embeddings** (word2vec or sentence-transformers) to capture semantic meaning rather than just word frequency, and compare against the BoW baseline
 
-```bash
-$ psql -U my_user -d my_database
-```
+---
 
-Once inside PSQL, you can create tables, run queries, insert, update, or delete data, and much more!
-
-**Environment Variables**
-
-Create a .env file in the root directory of the project to store your environment variables, such as your database connection string:
-
-```makefile
-DATABASE_URL="postgresql://<USER>:<PASSWORD>@<HOST>:<PORT>/<DB_NAME>"
-
-#example
-DATABASE_URL="postgresql://my_user:my_password@localhost:5432/my_database"
-```
-
-## Running the Application
-
-To run the application, execute the app.py script from the root directory of the project:
-
-```bash
-python src/app.py
-```
-
-## Adding Models
-
-To add SQLAlchemy model classes, create new Python script files within the models/ directory. These classes should be defined according to your database schema.
-
-Example model definition (`models/example_model.py`):
-
-```py
-from sqlalchemy.orm import declarative_base
-from sqlalchemy import String
-from sqlalchemy.orm import Mapped, mapped_column
-
-Base = declarative_base()
-
-class ExampleModel(Base):
-    __tablename__ = 'example_table'
-    id: Mapped[int] = mapped_column(primary_key=True)
-    username: Mapped[str] = mapped_column(unique=True)
-```
-
-## Working with Data
-
-You can place your raw datasets in the data/raw directory, intermediate datasets in data/interim, and processed datasets ready for analysis in data/processed.
-
-To process data, you can modify the app.py script to include your data processing steps, using pandas for data manipulation and analysis.
-
-## Contributors
-
-This project is maintained by [matthewkane-ml](https://github.com/matthewkane-ml).
+**Author:** Matthew Kane — [LinkedIn](https://www.linkedin.com/in/thomas-k-392094410/) · [GitHub portfolio](https://github.com/matthewkane-ml)
